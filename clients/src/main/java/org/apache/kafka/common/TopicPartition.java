@@ -53,6 +53,11 @@ public final class TopicPartition implements Serializable {
         return result;
     }
 
+    /**
+     * 重写了equals，所以能够在map之类容器充当key或者value进行equals比较
+     * @param obj
+     * @return
+     */
     @Override
     public boolean equals(Object obj) {
         if (this == obj)

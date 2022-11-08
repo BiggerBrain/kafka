@@ -89,6 +89,7 @@ import scala.util.{Failure, Success, Try}
 
 /**
  * Logic to handle the various Kafka requests
+ * 代码解析:逻辑处理不同kafka请求
  */
 class KafkaApis(val requestChannel: RequestChannel,
                 val metadataSupport: MetadataSupport,
@@ -159,12 +160,14 @@ class KafkaApis(val requestChannel: RequestChannel,
 
   /**
    * Top-level method that handles all requests and multiplexes to the right api
+   * 代码解析:顶级方法:处理各项请求和多路处理各种对应的api，客户端的请求抵达 Kafka 服务端后，首先经过底层网络组件的协议解析处理，
+   * 完成后分发到handler进行处理，handler调用KafkaApis的如下方法进行统一的业务处理
    */
   override def handle(request: RequestChannel.Request, requestLocal: RequestLocal): Unit = {
     try {
       trace(s"Handling request:${request.requestDesc(true)} from connection ${request.context.connectionId};" +
         s"securityProtocol:${request.context.securityProtocol},principal:${request.context.principal}")
-
+      //代码解析:将拒绝在此范围内未公开的api，并在将其提交给请求处理程序之前关闭连接，因此在实际中不应执行此路径
       if (!apiVersionManager.isApiEnabled(request.header.apiKey)) {
         // The socket server will reject APIs which are not exposed in this scope and close the connection
         // before handing them to the request handler, so this path should not be exercised in practice
@@ -172,6 +175,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       }
 
       request.header.apiKey match {
+        //代码解析:处理写入请求
         case ApiKeys.PRODUCE => handleProduceRequest(request, requestLocal)
         case ApiKeys.FETCH => handleFetchRequest(request)
         case ApiKeys.LIST_OFFSETS => handleListOffsetRequest(request)
@@ -538,13 +542,17 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   /**
-   * Handle a produce request
+   * 代码解析:处理生产消息请求
    */
   def handleProduceRequest(request: RequestChannel.Request, requestLocal: RequestLocal): Unit = {
+    //代码解析:校验request是ProduceRequest同时转化成生产者请求
     val produceRequest = request.body[ProduceRequest]
+    //代码解析:获取请求大小，计算需要添加的字节数
     val requestSize = request.sizeInBytes
 
+    //代码解析:事务消息进行额外处理
     if (RequestUtils.hasTransactionalRecords(produceRequest)) {
+      //代码解析:是否是已经被授权的事务消息
       val isAuthorizedTransactional = produceRequest.transactionalId != null &&
         authHelper.authorize(request.context, WRITE, TRANSACTIONAL_ID, produceRequest.transactionalId)
       if (!isAuthorizedTransactional) {
@@ -553,11 +561,15 @@ class KafkaApis(val requestChannel: RequestChannel,
       }
     }
 
+    //代码解析:未授权的topic-partition的处理结果响应集合
     val unauthorizedTopicResponses = mutable.Map[TopicPartition, PartitionResponse]()
+    //代码解析:不存在的topic-partition的处理结果响应集合
     val nonExistingTopicResponses = mutable.Map[TopicPartition, PartitionResponse]()
     val invalidRequestResponses = mutable.Map[TopicPartition, PartitionResponse]()
+    //代码解析:被授权的请求的响应集合
     val authorizedRequestInfo = mutable.Map[TopicPartition, MemoryRecords]()
     // cache the result to avoid redundant authorization calls
+    //代码解析:缓存结果以避免冗余授权调用，特指事务
     val authorizedTopics = authHelper.filterByAuthorized(request.context, WRITE, TOPIC,
       produceRequest.data().topicData().asScala)(_.name())
 
@@ -566,14 +578,18 @@ class KafkaApis(val requestChannel: RequestChannel,
       // This caller assumes the type is MemoryRecords and that is true on current serialization
       // We cast the type to avoid causing big change to code base.
       // https://issues.apache.org/jira/browse/KAFKA-10698
+      //代码解析:这个调用者假设类型是MemoryRecords，在当前序列化中这是正确的,我们对类型进行强制转换，以避免对代码基造成较大的更改
       val memoryRecords = partition.records.asInstanceOf[MemoryRecords]
+      //代码解析:对于未授权的topic，返回TOPIC_AUTHORIZATION_FAILED错误，对于在metadataCache不存在的topic抛出UNKNOWN_TOPIC_OR_PARTITION
       if (!authorizedTopics.contains(topicPartition.topic))
         unauthorizedTopicResponses += topicPartition -> new PartitionResponse(Errors.TOPIC_AUTHORIZATION_FAILED)
       else if (!metadataCache.contains(topicPartition))
         nonExistingTopicResponses += topicPartition -> new PartitionResponse(Errors.UNKNOWN_TOPIC_OR_PARTITION)
       else
         try {
+          //代码解析:对携带的每一条消息数据进行有效性校验，由于Kafka各个版本的消息结构有差异，这部分其实主要是进行消息结构的版本兼容性校验
           ProduceRequest.validateRecords(request.header.apiVersion, memoryRecords)
+          //代码解析:获取通过授权的请求集合
           authorizedRequestInfo += (topicPartition -> memoryRecords)
         } catch {
           case e: ApiException =>
@@ -585,6 +601,9 @@ class KafkaApis(val requestChannel: RequestChannel,
     // The construction of ProduceResponse is able to accept auto-generated protocol data so
     // KafkaApis#handleProduceRequest should apply auto-generated protocol to avoid extra conversion.
     // https://issues.apache.org/jira/browse/KAFKA-10730
+    //代码解析:用于发送produce响应的回调，ProduceResponse的结构能够接受自动生成的协议数据，
+    // 所以kafka api #handleProduceRequest应该应用自动生成的协议，以避免额外的转换。为什么要做回调？
+    // 因为这个函数会当做回调函数最终传递给DelayedProduce的responseCallback参数
     @nowarn("cat=deprecation")
     def sendResponseCallback(responseStatus: Map[TopicPartition, PartitionResponse]): Unit = {
       val mergedResponseStatus = responseStatus ++ unauthorizedTopicResponses ++ nonExistingTopicResponses ++ invalidRequestResponses
@@ -644,30 +663,35 @@ class KafkaApis(val requestChannel: RequestChannel,
       }
     }
 
+    //代码解析:统计做了格式转化的请求回调
     def processingStatsCallback(processingStats: FetchResponseStats): Unit = {
       processingStats.forKeyValue { (tp, info) =>
         updateRecordConversionStats(request, tp, info)
       }
     }
 
+    //代码解析:被授权的请求集合为空，则直接返回
     if (authorizedRequestInfo.isEmpty)
       sendResponseCallback(Map.empty)
     else {
+      //代码解析:决定是否可以操作内部主题，只有发出请求的客户端ID是"__admin_client"才可以操作内部主题
       val internalTopicsAllowed = request.header.clientId == AdminUtils.AdminClientId
 
       // call the replica manager to append messages to the replicas
+      //代码解析:调用副本管理器将消息追加到副本
       replicaManager.appendRecords(
-        timeout = produceRequest.timeout.toLong,
-        requiredAcks = produceRequest.acks,
-        internalTopicsAllowed = internalTopicsAllowed,
+        timeout = produceRequest.timeout.toLong,//代码解析:请求的超时时间
+        requiredAcks = produceRequest.acks, //代码解析:写入请求的响应模式
+        internalTopicsAllowed = internalTopicsAllowed,//代码解析: 是否允许操作内部topic
         origin = AppendOrigin.Client,
-        entriesPerPartition = authorizedRequestInfo,
+        entriesPerPartition = authorizedRequestInfo,//代码解析:授权处理的topic
         requestLocal = requestLocal,
-        responseCallback = sendResponseCallback,
+        responseCallback = sendResponseCallback,//代码解析: 这里传入回调的请求
         recordConversionStatsCallback = processingStatsCallback)
 
       // if the request is put into the purgatory, it will have a held reference and hence cannot be garbage collected;
       // hence we clear its data here in order to let GC reclaim its memory since it is already appended to log
+      //代码解析:如果请求被放入炼狱，它将有一个持有的引用，因此不能被垃圾回收; 因此我们在这里清除它的数据，以便让GC回收它的内存，因为它已经附加到日志中
       produceRequest.clearPartitionRecords()
     }
   }

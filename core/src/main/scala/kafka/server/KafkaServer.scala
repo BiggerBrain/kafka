@@ -87,6 +87,7 @@ object KafkaServer {
 /**
  * Represents the lifecycle of a single Kafka broker. Handles all functionality required
  * to start up and shutdown a single Kafka node.
+ * 代码解析:表示单个Kafka broker的生命周期。处理启动和关闭单个Kafka节点所需的所有功能
  */
 class KafkaServer(
   val config: KafkaConfig,

@@ -723,7 +723,7 @@ class UnifiedLog(@volatile var logStartOffset: Long,
 
   /**
    * Append this message set to the active segment of the local log, assigning offsets and Partition Leader Epochs
-   *
+   * 代码解析：将此消息集追写到本地日志的活动的日志段同时分配偏移量和分区Leader epoch
    * @param records The records to append
    * @param origin Declares the origin of the append which affects required validations
    * @param interBrokerProtocolVersion Inter-broker message protocol version
@@ -759,15 +759,18 @@ class UnifiedLog(@volatile var logStartOffset: Long,
   }
 
   /**
-   * Append this message set to the active segment of the local log, rolling over to a fresh segment if necessary.
+   * 代码解析：将此消息集追写到本地日志的活动段，如果需要，滚动到一个新的段。该方法通常负责为消息分配偏移量，
+   * 但是，如果传递了assignOffsets=false标志，我们将只检查现有的偏移量是否有效。
    *
-   * This method will generally be responsible for assigning offsets to the messages,
+   * Append this message set to the active segment of the local log, rolling over to a fresh segment if necessary.
+   * This method will generally be responsible for assigning offsets to the messages，
    * however if the assignOffsets=false flag is passed we will only check that the existing offsets are valid.
    *
    * @param records The log records to append
    * @param origin Declares the origin of the append which affects required validations
    * @param interBrokerProtocolVersion Inter-broker message protocol version
    * @param validateAndAssignOffsets Should the log assign offsets to this message set or blindly apply what it is given
+   *                                 日志应该为这个消息集分配偏移量，还是盲目地应用它所给出的内容
    * @param leaderEpoch The partition's leader epoch which will be applied to messages when offsets are assigned on the leader
    * @param requestLocal The request local instance if assignOffsets is true
    * @param ignoreRecordSize true to skip validation of record size.
@@ -787,25 +790,31 @@ class UnifiedLog(@volatile var logStartOffset: Long,
     // This will ensure that any log data can be recovered with the correct topic ID in the case of failure.
     maybeFlushMetadataFile()
 
+    //代码解析: 方法分析校验消息数据是否合法
     val appendInfo = analyzeAndValidateRecords(records, origin, ignoreRecordSize, leaderEpoch)
 
     // return if we have no valid messages or if this is a duplicate of the last appended entry
+    //如果没有有效消息，或者这是最后一个重复的请求
     if (appendInfo.shallowCount == 0) appendInfo
     else {
 
       // trim any invalid bytes or partial messages before appending it to the on-disk log
+      //代码解析:在将任何无效字节或部分消息附加到磁盘日志之前通过limit删除掉(或者说限制写入)
       var validRecords = trimInvalidBytes(records, appendInfo)
 
       // they are valid, insert them in the log
+      //代码解析: 判定有效的消息插入到log
       lock synchronized {
         maybeHandleIOException(s"Error while appending records to $topicPartition in dir ${dir.getParent}") {
           localLog.checkIfMemoryMappedBufferClosed()
           if (validateAndAssignOffsets) {
             // assign offsets to the message set
+            // 代码解析:分类位点给这批写入的消息集合，先分配LEO
             val offset = new LongRef(localLog.logEndOffset)
             appendInfo.firstOffset = Some(LogOffsetMetadata(offset.value))
             val now = time.milliseconds
             val validateAndOffsetAssignResult = try {
+              //代码解析：进一步校验消息数据，并为每一条消息设置偏移量和时间戳
               LogValidator.validateMessagesAndAssignOffsets(validRecords,
                 topicPartition,
                 offset,
@@ -896,6 +905,7 @@ class UnifiedLog(@volatile var logStartOffset: Long,
           }
 
           // maybe roll the log if this segment is full
+          // 代码解析:判断当前最新的 LogSegment 是否能容纳这一批消息数据，如果不能则新建一个 LogSegment 用于存储消息数据。新建 LogSegment 的过程中会创建新的消息存储文件，消息数据写入文件的过程实际上是通过文件系统先写入到页缓存（Page Cache），在合适的时候再写入到磁盘
           val segment = maybeRoll(validRecords.sizeInBytes, appendInfo)
 
           val logOffsetMetadata = LogOffsetMetadata(
@@ -905,6 +915,9 @@ class UnifiedLog(@volatile var logStartOffset: Long,
 
           // now that we have valid records, offsets assigned, and timestamps updated, we need to
           // validate the idempotent/transactional state of the producers and collect some metadata
+          // 代码解析：分析校验生产者在服务端的状态，确定消息是否有重复等信息，
+          //  消息没有重复则调用 LogSegment.scala#append() 进行消息数据的写入，
+          //  完成后需要通过 ProducerStateManager 更新服务端保存的该生产者的相关信息
           val (updatedProducers, completedTxns, maybeDuplicate) = analyzeAndValidateProducerState(
             logOffsetMetadata, validRecords, origin)
 
@@ -926,6 +939,9 @@ class UnifiedLog(@volatile var logStartOffset: Long,
               // will be cleaned up after the log directory is recovered. Note that the end offset of the
               // ProducerStateManager will not be updated and the last stable offset will not advance
               // if the append to the transaction index fails.
+              //代码解析:首先调用 LogSegment.scala#ensureOffsetInRange() 通过偏移量索引 OffsetIndex 检查要插入的消息数据的偏移量是否符合要求
+              // 其次调用 FileRecords.java#append() 将消息数据写入文件
+              // 根据索引间隔字节数配置及bytesSinceLastIndexEntry累加器判断是否要插入一个索引关键字，这也就是笔者在之前的文章中提到过的 Kafka 索引为稀疏索引的体现
               localLog.append(appendInfo.lastOffset, appendInfo.maxTimestamp, appendInfo.offsetOfMaxTimestamp, validRecords)
               updateHighWatermarkWithLogEndOffset()
 

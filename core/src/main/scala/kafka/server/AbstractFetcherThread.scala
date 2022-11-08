@@ -47,6 +47,7 @@ import scala.math._
 
 /**
  *  Abstract class for fetching data from multiple partitions from the same broker.
+ *  抽象类，用于从同一个broker从多个分区获取数据。
  */
 abstract class AbstractFetcherThread(name: String,
                                      clientId: String,

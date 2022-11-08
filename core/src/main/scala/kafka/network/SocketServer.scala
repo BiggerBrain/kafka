@@ -691,6 +691,7 @@ private[kafka] abstract class Acceptor(val socketServer: SocketServer,
    */
   private def acceptNewConnections(): Unit = {
     val ready = nioSelector.select(500)
+    info(s"ready:$ready");
     if (ready > 0) {
       val keys = nioSelector.selectedKeys()
       val iter = keys.iterator()
@@ -886,6 +887,9 @@ private[kafka] class Processor(
     override def toString: String = s"$localHost:$localPort-$remoteHost:$remotePort-$index"
   }
 
+  /**
+   * NOTE:新接收的连接，不是process当前处理的client的连接
+   */
   private val newConnections = new ArrayBlockingQueue[SocketChannel](connectionQueueSize)
   private val inflightResponses = mutable.Map[String, RequestChannel.Response]()
   private val responseQueue = new LinkedBlockingDeque[RequestChannel.Response]()
@@ -1225,10 +1229,13 @@ private[kafka] class Processor(
    */
   private def configureNewConnections(): Unit = {
     var connectionsProcessed = 0
+    //代码解析:如果新连接的队列不空，每次最多拉取connectionQueueSize个请求，connectionQueueSize默认20个请求
     while (connectionsProcessed < connectionQueueSize && !newConnections.isEmpty) {
+      //代码解析:从阻塞的FIFO队列的队首拿到连接的Channel
       val channel = newConnections.poll()
       try {
         debug(s"Processor $id listening to new connection from ${channel.socket.getRemoteSocketAddress}")
+        //代码解析:根据连接生成连接的ID并注册
         selector.register(connectionId(channel.socket), channel)
         connectionsProcessed += 1
       } catch {

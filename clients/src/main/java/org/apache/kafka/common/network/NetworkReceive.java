@@ -27,6 +27,7 @@ import java.nio.channels.ScatteringByteChannel;
 
 /**
  * A size delimited Receive that consists of a 4 byte network-ordered size N followed by N bytes of content
+ *
  */
 public class NetworkReceive implements Receive {
 

@@ -261,6 +261,7 @@ class Partition(val topicPartition: TopicPartition,
   private val stateChangeLogger = new StateChangeLogger(localBrokerId, inControllerContext = false, None)
   private val remoteReplicasMap = new Pool[Int, Replica]
   // The read lock is only required when multiple reads are executed and needs to be in a consistent manner
+  //代码解析:只读锁在执行多个读操作时需要，从而保障并发读情况下操作的一致性
   private val leaderIsrUpdateLock = new ReentrantReadWriteLock
 
   // lock to prevent the follower replica log update while checking if the log dir could be replaced with future log.
@@ -1149,24 +1150,39 @@ class Partition(val topicPartition: TopicPartition,
     }
   }
 
+  /**
+   * 代码解析:本方法为Partition的方法，上层调用Partition方法加读锁方式进行写入操作
+   * @param records
+   * @param origin
+   * @param requiredAcks
+   * @param requestLocal
+   * @return
+   */
   def appendRecordsToLeader(records: MemoryRecords, origin: AppendOrigin, requiredAcks: Int,
                             requestLocal: RequestLocal): LogAppendInfo = {
     val (info, leaderHWIncremented) = inReadLock(leaderIsrUpdateLock) {
+      //代码解析: 检查Leader 副本的 ISR 状态，状态满足要求才调用 Log.scala#appendAsLeader() 方法进行消息数据写入
       leaderLogIfLocal match {
+        //代码解析： 存在本地leaderLog
         case Some(leaderLog) =>
+          //代码解析:获取最小副本数，在-1模式下，在线副本数不能小于该值
           val minIsr = leaderLog.config.minInSyncReplicas
+          //代码解析:获取isr的大小
           val inSyncSize = partitionState.isr.size
 
           // Avoid writing to leader if there are not enough insync replicas to make it safe
+          //代码解析:如果没有足够的同步副本，避免写入leader
           if (inSyncSize < minIsr && requiredAcks == -1) {
             throw new NotEnoughReplicasException(s"The size of the current ISR ${partitionState.isr} " +
               s"is insufficient to satisfy the min.isr requirement of $minIsr for partition $topicPartition")
           }
 
+          //代码解析:调用Log对象进行消息数据的写入并获取结果info，appendAsLeader是一个入口
           val info = leaderLog.appendAsLeader(records, leaderEpoch = this.leaderEpoch, origin,
             interBrokerProtocolVersion, requestLocal)
 
           // we may need to increment high watermark since ISR could be down to 1
+          //代码解析:得到info后，我们可能需要增加高水位，因为ISR可能下降到1，具体解析详细见方法
           (info, maybeIncrementLeaderHW(leaderLog))
 
         case None =>

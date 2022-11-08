@@ -180,10 +180,33 @@ object HostedPartition {
   final object Offline extends HostedPartition
 }
 
+/**
+ * 代码解析：副本管理的伴生对象
+ */
 object ReplicaManager {
   val HighWatermarkFilename = "replication-offset-checkpoint"
 }
 
+/**
+ * 代码解析:管理副本:比如，启动副本为leader或者Follower，停止副本，从leader同步数据等。
+ * @param config
+ * @param metrics
+ * @param time
+ * @param scheduler
+ * @param logManager
+ * @param quotaManagers
+ * @param metadataCache
+ * @param logDirFailureChannel
+ * @param alterPartitionManager
+ * @param brokerTopicStats
+ * @param isShuttingDown
+ * @param zkClient
+ * @param delayedProducePurgatoryParam
+ * @param delayedFetchPurgatoryParam
+ * @param delayedDeleteRecordsPurgatoryParam
+ * @param delayedElectLeaderPurgatoryParam
+ * @param threadNamePrefix
+ */
 class ReplicaManager(val config: KafkaConfig,
                      metrics: Metrics,
                      time: Time,
@@ -510,6 +533,8 @@ class ReplicaManager(val config: KafkaConfig,
     allPartitions.values.iterator.count(_ == HostedPartition.Offline)
   }
 
+  //代码解析:Either概念，很长时间以来它被认为是抛出异常的一种替代方案。
+  // 当Either 用于表示错误标志或某一对象值时，Left 值用于表示错误标志，如：信息字符串或下层库抛出的异常；而正常返回时则使用Right 对象。
   def getPartitionOrException(topicPartition: TopicPartition): Partition = {
     getPartitionOrError(topicPartition) match {
       case Left(Errors.KAFKA_STORAGE_ERROR) =>
@@ -521,7 +546,7 @@ class ReplicaManager(val config: KafkaConfig,
       case Right(partition) => partition
     }
   }
-
+  //代码解析:从allPartitions查找topicPartition对应的Partition，并判断是否在线，不在线则标记为Left
   def getPartitionOrError(topicPartition: TopicPartition): Either[Errors, Partition] = {
     getPartition(topicPartition) match {
       case HostedPartition.Online(partition) =>
@@ -577,6 +602,10 @@ class ReplicaManager(val config: KafkaConfig,
    * Noted that all pending delayed check operations are stored in a queue. All callers to ReplicaManager.appendRecords()
    * are expected to call ActionQueue.tryCompleteActions for all affected partitions, without holding any conflicting
    * locks.
+   * 代码解析：将消息附加到分区的主副本，并等待它们被复制到其他副本;当超时或满足要求的ack时会触发回调函数;
+   *  如果回调函数本身已经在某个对象上同步，则传递此对象以避免死锁。注意，所有挂起的延迟检查操作都存储在队列中。
+   *  replicemanager.appendrecords()的所有调用者预期上需要调用ActionQueue.tryCompleteActions，为所有受影响的分区尝试completeactions，
+   *  不保留任何冲突。
    */
   def appendRecords(timeout: Long,
                     requiredAcks: Short,
@@ -587,8 +616,13 @@ class ReplicaManager(val config: KafkaConfig,
                     delayedProduceLock: Option[Lock] = None,
                     recordConversionStatsCallback: Map[TopicPartition, RecordConversionStats] => Unit = _ => (),
                     requestLocal: RequestLocal = RequestLocal.NoCaching): Unit = {
+    //代码解析:校验acks配置是否合法:
+    // 0：生产者不等待服务端完成消息写入，最小延迟
+    // 1：生产者等待服务端 Leader 副本的消息写入完成，以便确认消息发送成功
+    // -1:生产者等待服务端 Leader 副本及其ISR(in-sync replicas) 列表中的 Follower 副本都完成消息写入
     if (isValidRequiredAcks(requiredAcks)) {
       val sTime = time.milliseconds
+      //代码解析：追加写入本地的Log，并返回结果，结果是一个map，包含多个topic-partition的结果
       val localProduceResults = appendToLocalLog(internalTopicsAllowed = internalTopicsAllowed,
         origin, entriesPerPartition, requiredAcks, requestLocal)
       debug("Produce to local log in %d ms".format(time.milliseconds - sTime))
@@ -919,6 +953,7 @@ class ReplicaManager(val config: KafkaConfig,
                                entriesPerPartition: Map[TopicPartition, MemoryRecords],
                                requiredAcks: Short,
                                requestLocal: RequestLocal): Map[TopicPartition, LogAppendResult] = {
+    //代码解析:如果trace级别的打印开启，打印每个entriesPerPartition的写入，方便调试追踪
     val traceEnabled = isTraceEnabled
     def processFailedRecord(topicPartition: TopicPartition, t: Throwable) = {
       val logStartOffset = onlinePartition(topicPartition).map(_.logStartOffset).getOrElse(-1L)
@@ -932,18 +967,22 @@ class ReplicaManager(val config: KafkaConfig,
     if (traceEnabled)
       trace(s"Append [$entriesPerPartition] to local log")
 
+    //代码解析:先统计单topic写入的QPS，再统计整体topic写入的QPS
     entriesPerPartition.map { case (topicPartition, records) =>
       brokerTopicStats.topicStats(topicPartition.topic).totalProduceRequestRate.mark()
       brokerTopicStats.allTopicsStats.totalProduceRequestRate.mark()
 
       // reject appending to internal topics if it is not allowed
+      //代码解析:如果是内部topic，权限不允许的话，抛出异常UnknownLogAppendInfo
       if (Topic.isInternal(topicPartition.topic) && !internalTopicsAllowed) {
         (topicPartition, LogAppendResult(
           LogAppendInfo.UnknownLogAppendInfo,
           Some(new InvalidTopicException(s"Cannot append to internal topic ${topicPartition.topic}"))))
       } else {
         try {
+          //代码解析:从allPartitions定位到目标分区的在线的Partition对象，其他情况抛出异常
           val partition = getPartitionOrException(topicPartition)
+          //代码解析:方法进行消息数据的追加处理，并返回info结果，统计添加了多少messages
           val info = partition.appendRecordsToLeader(records, origin, requiredAcks, requestLocal)
           val numAppendedMessages = info.numMessages
 

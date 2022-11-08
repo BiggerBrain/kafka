@@ -36,6 +36,7 @@ trait ApiRequestHandler {
 
 /**
  * A thread that answers kafka requests.
+ * 代码解析:处理kafka各项请求的线程
  */
 class KafkaRequestHandler(id: Int,
                           brokerId: Int,
@@ -55,11 +56,13 @@ class KafkaRequestHandler(id: Int,
       // Since meter is calculated as total_recorded_value / time_window and
       // time_window is independent of the number of threads, each recorded idle
       // time should be discounted by # threads.
+
       val startSelectTime = time.nanoseconds
 
       val req = requestChannel.receiveRequest(300)
       val endTime = time.nanoseconds
       val idleTime = endTime - startSelectTime
+      //代码解析:跟踪请求处理程序的平均空闲容量的指标
       aggregateIdleMeter.mark(idleTime / totalHandlerThreads.get)
 
       req match {
