@@ -177,6 +177,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       request.header.apiKey match {
         //代码解析:处理写入请求
         case ApiKeys.PRODUCE => handleProduceRequest(request, requestLocal)
+        //代码解析:接收来自客户端的 Fetch 请求后，会将其投入到请求队列交，Handler线程拉取该请求后会通过如下方法执行
         case ApiKeys.FETCH => handleFetchRequest(request)
         case ApiKeys.LIST_OFFSETS => handleListOffsetRequest(request)
         case ApiKeys.METADATA => handleTopicMetadataRequest(request)
@@ -698,6 +699,7 @@ class KafkaApis(val requestChannel: RequestChannel,
 
   /**
    * Handle a fetch request
+   * //代码解析:处理拉取请求
    */
   def handleFetchRequest(request: RequestChannel.Request): Unit = {
     val versionId = request.header.apiVersion

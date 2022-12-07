@@ -547,6 +547,7 @@ class ControlPlaneAcceptor(socketServer: SocketServer,
 
 /**
  * Thread that accepts and configures new connections. There is one of these per endpoint.
+ * 代码解析：processor线程先启动，然后启动acceptor启动后
  */
 private[kafka] abstract class Acceptor(val socketServer: SocketServer,
                                        val endPoint: EndPoint,
@@ -636,6 +637,7 @@ private[kafka] abstract class Acceptor(val socketServer: SocketServer,
 
   /**
    * Accept loop that checks for new connection attempts
+   * 代码解析:不断循环检测是否有新连接尝试连接
    */
   override def run(): Unit = {
     serverChannel.register(nioSelector, SelectionKey.OP_ACCEPT)
@@ -950,6 +952,8 @@ private[kafka] class Processor(
   // Connection ids have the format `localAddr:localPort-remoteAddr:remotePort-index`. The index is a
   // non-negative incrementing value that ensures that even if remotePort is reused after a connection is
   // closed, connection ids are not reused while requests from the closed connection are being processed.
+  //代码解析:连接id的格式为“localAddr:localPort-remoteAddr:remotePort-index”。index是一个非负递增值，
+  // 它确保即使remotePort在连接关闭后被重用情况下，在处理来自关闭连接的请求时也不会重复使用连接id。
   private var nextConnectionIndex = 0
 
   override def run(): Unit = {

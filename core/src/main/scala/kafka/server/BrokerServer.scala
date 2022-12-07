@@ -70,6 +70,7 @@ class BrokerSnapshotWriterBuilder(raftClient: RaftClient[ApiMessageAndVersion])
 
 /**
  * A Kafka broker that runs in KRaft (Kafka Raft) mode.
+ * raft 模式下的kafka服务器
  */
 class BrokerServer(
   val config: KafkaConfig,

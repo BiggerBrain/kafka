@@ -51,6 +51,8 @@ trait ConfigHandler {
 /**
   * The TopicConfigHandler will process topic config changes from ZooKeeper or the metadata log.
   * The callback provides the topic name and the full properties set.
+ * 代码解析：TopicConfigHandler将处理来自ZooKeeper或元数据日志的主题配置更改。
+ * handler的回调提供主题名称和完整的属性集。
   */
 class TopicConfigHandler(private val logManager: LogManager, kafkaConfig: KafkaConfig,
                          val quotas: QuotaManagers, kafkaController: Option[KafkaController]) extends ConfigHandler with Logging  {

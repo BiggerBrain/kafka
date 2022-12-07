@@ -46,7 +46,8 @@ import scala.jdk.CollectionConverters._
  * on a KRaft quorum for maintaining cluster metadata. It is responsible for
  * constructing the controller and/or broker based on the `process.roles`
  * configuration and for managing their basic lifecycle (startup and shutdown).
- *
+ * 代码解析：这个类主要实现了基于Kafka Raft选举来管理集群元数据的的kafka服务器，
+ *  它负责基于'process.roles'构造，代理，配置和管理Controller的基本生命周期(启动和关闭)
  */
 class KafkaRaftServer(
   config: KafkaConfig,

@@ -38,6 +38,9 @@ object Kafka extends Logging {
     // fact that this class ignores the first parameter which is interpreted as positional and mandatory
     // but would not be mandatory if --version is specified
     // This is a bit of an ugly crutch till we get a chance to rework the entire command line parsing
+    //代码解析：这只是为了让参数显示在帮助输出中，我们实际上没有使用它，因为这个类忽略了第一个被解释为位置和强制的参数
+    // 但如果指定了——version，则不强制
+    // 在我们有机会重做整个命令行解析之前，这是一个有点丑陋的支持
     optionParser.accepts("version", "Print version information and exit.")
 
     if (args.length == 0 || args.contains("--help")) {
