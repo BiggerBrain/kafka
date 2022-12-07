@@ -1955,6 +1955,7 @@ class ReplicaManager(val config: KafkaConfig,
     info("Shut down completely")
   }
 
+  //代码解析：每个Broker启动后，会创建ReplicaManager，而ReplicaManager在实例化过程中，内部会创建一个名为ReplicaFetcherManager的对象
   protected def createReplicaFetcherManager(metrics: Metrics, time: Time, threadNamePrefix: Option[String], quotaManager: ReplicationQuotaManager) = {
     new ReplicaFetcherManager(config, this, metrics, time, threadNamePrefix, quotaManager, () => metadataCache.metadataVersion())
   }

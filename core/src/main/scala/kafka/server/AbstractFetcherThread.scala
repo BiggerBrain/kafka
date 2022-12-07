@@ -49,16 +49,17 @@ import scala.math._
  *  Abstract class for fetching data from multiple partitions from the same broker.
  *  抽象类，用于从同一个broker从多个分区获取数据。
  */
-abstract class AbstractFetcherThread(name: String,
-                                     clientId: String,
-                                     val leader: LeaderEndPoint,
-                                     failedPartitions: FailedPartitions,
-                                     fetchBackOffMs: Int = 0,
-                                     isInterruptible: Boolean = true,
-                                     val brokerTopicStats: BrokerTopicStats) //BrokerTopicStats's lifecycle managed by ReplicaManager
+abstract class AbstractFetcherThread(name: String, //代码解析：线程名称
+                                     clientId: String,//代码解析：Client Id，用于日志输出
+                                     val leader: LeaderEndPoint,//代码解析： 数据源Broker地址
+                                     failedPartitions: FailedPartitions,//代码解析： 处理过程中出现失败的分区
+                                     fetchBackOffMs: Int = 0,//代码解析：获取操作重试间隔
+                                     isInterruptible: Boolean = true,//代码解析：线程是否允许被中断
+                                     val brokerTopicStats: BrokerTopicStats) ////代码解析：BrokerTopicStats's lifecycle managed by ReplicaManager
   extends ShutdownableThread(name, isInterruptible) {
-
+  //代码解析：定义FetchData类型表示获取的消息数据
   type FetchData = FetchResponseData.PartitionData
+  //代码解析：定义EpochData类型表示Leader Epoch数据
   type EpochData = OffsetForLeaderEpochRequestData.OffsetForLeaderPartition
 
   private val partitionStates = new PartitionStates[PartitionFetchState]
@@ -109,10 +110,12 @@ abstract class AbstractFetcherThread(name: String,
 
   private def maybeFetch(): Unit = {
     val fetchRequestOpt = inLock(partitionMapLock) {
+      //代码解析： 针对Leader都在同一个Broker上的一批Follower分区，创建一个FetchRequest
       val ResultWithPartitions(fetchRequestOpt, partitionsWithError) = leader.buildFetch(partitionStates.partitionStateMap.asScala)
 
       handlePartitionsWithErrors(partitionsWithError, "maybeFetch")
 
+      //代码解析：没有需要同步的分区，等待一段时间
       if (fetchRequestOpt.isEmpty) {
         trace(s"There are no active partitions. Back off for $fetchBackOffMs ms before sending a fetch request")
         partitionMapCond.await(fetchBackOffMs, TimeUnit.MILLISECONDS)
@@ -121,6 +124,7 @@ abstract class AbstractFetcherThread(name: String,
       fetchRequestOpt
     }
 
+    //代码解析：发送请求进行副本数据同步
     fetchRequestOpt.foreach { case ReplicaFetch(sessionPartitions, fetchRequest) =>
       processFetchRequest(sessionPartitions, fetchRequest)
     }
@@ -299,6 +303,11 @@ abstract class AbstractFetcherThread(name: String,
     }
   }
 
+  /**
+   * 代码解析：对结果处理的操作，本质就是通过底层NetworkClient组件执行请求发送，发送时会带上Follower的LEO，获得响应后会更新自己的LEO和HW
+   * @param sessionPartitions
+   * @param fetchRequest
+   */
   private def processFetchRequest(sessionPartitions: util.Map[TopicPartition, FetchRequest.PartitionData],
                                   fetchRequest: FetchRequest.Builder): Unit = {
     val partitionsWithError = mutable.Set[TopicPartition]()

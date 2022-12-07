@@ -45,6 +45,7 @@ class ReplicaFetcherManager(brokerConfig: KafkaConfig,
     val fetchSessionHandler = new FetchSessionHandler(logContext, sourceBroker.id)
     val leader = new RemoteLeaderEndPoint(logContext.logPrefix, endpoint, fetchSessionHandler, brokerConfig,
       replicaManager, quotaManager, metadataVersionSupplier)
+      //代码解析：ReplicaFetcherThread是AbstractFetcherManager的子类，可以创建副本同步线程，向Leader分区所在的Broker拉取数据进行同步：
     new ReplicaFetcherThread(threadName, leader, brokerConfig, failedPartitions, replicaManager,
       quotaManager, logContext.logPrefix, metadataVersionSupplier)
   }

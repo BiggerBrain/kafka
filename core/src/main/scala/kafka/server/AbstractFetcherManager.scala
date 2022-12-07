@@ -30,6 +30,7 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
   extends Logging with KafkaMetricsGroup {
   // map of (source broker_id, fetcher_id per source broker) => fetcher.
   // package private for test
+  //代码解析：fetcher线程集合
   private[server] val fetcherThreadMap = new mutable.HashMap[BrokerIdAndFetcherId, T]
   private val lock = new Object
   private var numFetchersPerBroker = numFetchers
@@ -122,6 +123,10 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
   // to be defined in subclass to create a specific fetcher
   def createFetcherThread(fetcherId: Int, sourceBroker: BrokerEndPoint): T
 
+  //代码解析：ReplicaFetcherManager最终会遍历当前Broker上的所有Follower分区，
+  // 把那些Leader分区在同一个Broker节点上的Follower分区归为一类，
+  // 并为它们创建一个ReplicaFetcherThread线程。
+  // 这样一来，一个ReplicaFetcherThread线程就负责为一批Follower分区向同一个Broker节点同步消息，节省了网络
   def addFetcherForPartitions(partitionAndOffsets: Map[TopicPartition, InitialFetchState]): Unit = {
     lock synchronized {
       val partitionsPerFetcher = partitionAndOffsets.groupBy { case (topicPartition, brokerAndInitialFetchOffset) =>
