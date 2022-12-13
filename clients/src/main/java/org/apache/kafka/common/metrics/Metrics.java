@@ -60,7 +60,7 @@ import static java.util.Collections.emptyList;
  * MetricName metricName = new MetricName(&quot;message-size-avg&quot;, &quot;producer-metrics&quot;);
  * sensor.add(metricName, new Avg());
  * metricName = new MetricName(&quot;message-size-max&quot;, &quot;producer-metrics&quot;);
- * sensor.add(metricName, new Max());
+ * c.add(metricName, new Max());
  * 
  * // as messages are sent we record the sizes
  * sensor.record(messageSize);

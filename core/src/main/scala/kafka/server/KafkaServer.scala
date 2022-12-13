@@ -309,6 +309,9 @@ class KafkaServer(
         //
         // Note that we allow the use of KRaft mode controller APIs when forwarding is enabled
         // so that the Envelope request is exposed. This is only used in testing currently.
+        //代码解析：包含一个Acceptor用来接收新的连接，Acceptor对应多个Processor线程，每个 Processor线程都有自己的Selector，
+        // 用来从连接中读取请求并写回响应,同时一个Acceptor线程对应多个Handler线程，这才是真正处理请求的线程，
+        // Handler线程处理完请求后把响应返回给 Processor线程，其中Processor线程和Handler线程通过RequestChannel传递数据，
         socketServer = new SocketServer(config, metrics, time, credentialProvider, apiVersionManager)
 
         // Start alter partition manager based on the IBP version

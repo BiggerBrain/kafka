@@ -102,17 +102,29 @@ public class Selector implements Selectable, AutoCloseable {
     }
 
     private final Logger log;
+    //代码解析：Selector是负责网络的建立，发送网络请求，处理实际的网络IO。
     private final java.nio.channels.Selector nioSelector;
+    //代码解析： broker 和 KafkaChannel的映射
+    // 这儿的kafkaChannel大家暂时可以理解为就是SocketChannel
+    // 代表的就是一个网络连接。
     private final Map<String, KafkaChannel> channels;
     private final Set<KafkaChannel> explicitlyMutedChannels;
     private boolean outOfMemory;
+    //代码解析：已经完成发送的请求
     private final List<NetworkSend> completedSends;
+    //代码解析：已经接收到的，并且处理完了的响应。
     private final LinkedHashMap<String, NetworkReceive> completedReceives;
     private final Set<SelectionKey> immediatelyConnectedKeys;
     private final Map<String, KafkaChannel> closingChannels;
     private Set<SelectionKey> keysWithBufferedRead;
+
+    //代码解析：没有建立连接的主机
     private final Map<String, ChannelState> disconnected;
+
+    //代码解析：建立连接的主机
     private final List<String> connected;
+
+    //代码解析：建立失败的连接
     private final List<String> failedSends;
     private final Time time;
     private final SelectorMetrics sensors;
@@ -135,7 +147,7 @@ public class Selector implements Selectable, AutoCloseable {
      * @param connectionMaxIdleMs Max idle connection time (use {@link #NO_IDLE_TIMEOUT_MS} to disable idle timeout)
      * @param failedAuthenticationDelayMs Minimum time by which failed authentication response and channel close should be delayed by.
      *                                    Use {@link #NO_FAILED_AUTHENTICATION_DELAY} to disable this delay.
-     * @param metrics Registry for Selector metrics
+     * @param metrics Registry for Selector metrics Selector的指标
      * @param time Time implementation
      * @param metricGrpPrefix Prefix for the group of metrics registered by Selector
      * @param metricTags Additional tags to add to metrics registered by Selector
@@ -143,8 +155,8 @@ public class Selector implements Selectable, AutoCloseable {
      * @param channelBuilder Channel builder for every new connection
      * @param logContext Context for logging with additional info
      */
-    public Selector(int maxReceiveSize,
-            long connectionMaxIdleMs,
+    public Selector(int maxReceiveSize,//代码解析：最大可以接收的数据量的大小
+            long connectionMaxIdleMs,//代码解析：每个网络连接最多可以空闲的时间的大小，就要回收掉
             int failedAuthenticationDelayMs,
             Metrics metrics,
             Time time,
