@@ -38,6 +38,7 @@ import scala.util.{Failure, Success, Try}
 
 /**
  * The entry point to the kafka log management subsystem. The log manager is responsible for log creation, retrieval, and cleaning.
+ * Kafka日志管理子系统的入口点。日志管理器负责日志的创建、检索和清理。
  * All read and write operations are delegated to the individual log instances.
  *
  * The log manager maintains logs in one or more directories. New logs are created in the data directory
