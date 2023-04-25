@@ -2464,6 +2464,11 @@ object Log {
    * avoided by passing in the recovery point, however finding the correct position to do this
    * requires accessing the offset index which may not be safe in an unclean shutdown.
    * For more information see the discussion in PR#2104
+   * Kafka的CleanShutdownFile文件是一个标记文件，用于指示Kafka Broker是否已经正确关闭。当Kafka Broker正常关闭时，它会在Kafka日志目录中创建一个名为“clean.shutdown”的空文件，
+   * 表示Broker已经正确关闭。如果在下一次启动时，Kafka Broker检测到clean.shutdown文件存在，则它将继续从上一次退出时的状态恢复。如果clean.shutdown文件不存在，
+   * 则Kafka Broker将从头开始构建新的状态。CleanShutdownFile文件的作用非常重要，特别是在进行紧急关闭或突然断电的情况下。如果Kafka Broker在关闭前未能正确创建clean.shutdown文件，那么
+   * 在重新启动时可能会出现数据丢失或数据损坏的情况，因为Kafka Broker可能会从未完全提交的事务中恢复，导致数据一致性问题。因此，建议在关闭Kafka Broker之前，应该始终确保clean.shutdown文
+   * 件已经正确创建。
    */
   val CleanShutdownFile = ".kafka_cleanshutdown"
 

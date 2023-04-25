@@ -40,11 +40,11 @@ import scala.util.{Failure, Success, Try}
  * The entry point to the kafka log management subsystem. The log manager is responsible for log creation, retrieval, and cleaning.
  * Kafka日志管理子系统的入口点。日志管理器负责日志的创建、检索和清理。
  * All read and write operations are delegated to the individual log instances.
- *
+ * 所有读写操作都被委托给各个日志实例。
  * The log manager maintains logs in one or more directories. New logs are created in the data directory
  * with the fewest logs. No attempt is made to move partitions after the fact or balance based on
  * size or I/O rate.
- *
+ * 日志管理器在一个或多个目录中维护日志。新日志将在日志最少的数据目录中创建。在事后不尝试移动分区或基于大小或I/O速率进行平衡。
  * A background thread handles log retention by periodically truncating excess log segments.
  */
 @threadsafe
@@ -67,6 +67,9 @@ class LogManager(logDirs: Seq[File],
 
   import LogManager._
 
+  /**
+   * Kafka 在运行过程中会使用 .lock 文件来锁定启动目录以避免多个 Kafka 进程同时在同一个目录下运行，从而防止数据丢失或损坏。当 Kafka 进程启动时，它会尝试在启动目录下创建一个名为 .lock 的文件，如果该文件已经存在，则说明有其他 Kafka 进程正在运行，此时新的 Kafka 进程将无法启动。只有当已经存在的 Kafka 进程结束并删除了 .lock 文件后，新的 Kafka 进程才能启动。因此，.lock 文件在保护 Kafka 数据完整性方面扮演着重要的角色。
+   */
   val LockFile = ".lock"
   val InitialTaskDelayMs = 30 * 1000
 
@@ -79,6 +82,9 @@ class LogManager(logDirs: Seq[File],
   // Each element in the queue contains the log object to be deleted and the time it is scheduled for deletion.
   private val logsToBeDeleted = new LinkedBlockingQueue[(Log, Long)]()
 
+  /**
+   * Kafka中，一个Broker可以在多个日志目录中存储数据。当Broker启动时，它会扫描所有日志目录，并加载现有的日志分区。如果某个日志目录不可用（如硬盘故障等），则该日志目录中的分区将无法加载，并可能导致数据丢失。为了避免这种情况，可以使用initialOfflineDirs参数指定在Broker启动时应该离线的日志目录列表。这样，Broker不会尝试加载这些目录中的任何分区，并避免了数据丢失的风险。需要注意的是，initialOfflineDirs参数仅在Broker启动时使用。如果在Broker运行期间需要离线某个日志目录，应该使用LogManager的offlineLogDirectory()方法将其从活动日志目录中移除。
+   */
   private val _liveLogDirs: ConcurrentLinkedQueue[File] = createAndValidateLogDirs(logDirs, initialOfflineDirs)
   @volatile private var _currentDefaultConfig = initialDefaultConfig
   @volatile private var numRecoveryThreadsPerDataDir = recoveryThreadsPerDataDir
@@ -308,6 +314,14 @@ class LogManager(logDirs: Seq[File],
     val jobs = mutable.Map.empty[File, Seq[Future[_]]]
     var numTotalLogs = 0
 
+    /**
+     * Kafka 中的 recoveryThreadsPerDataDir 是用于配置在恢复数据时每个数据目录使用的线程数。
+     * 在 Kafka 中，副本恢复是一个关键的过程，用于在某个 broker 宕机时从其他 broker 上的副本中恢复数据。为了加快恢复速度，Kafka 使用了多线程并发恢复机制。
+     * 其中，recoveryThreadsPerDataDir 参数就是用于控制每个数据目录使用的线程数。默认情况下，Kafka 会根据机器的 CPU 核心数和可用内存自动计算线程数。
+     * 但是，如果您的机器配置较高，可以通过修改 recoveryThreadsPerDataDir 参数来增大每个数据目录的恢复线程数，从而进一步提高恢复速度。
+     * 不过需要注意的是，增大线程数也会增加系统的负载和资源消耗。
+     * 例如，如果您希望每个数据目录使用 3 个线程进行恢复，可以在 Kafka 配置文件中添加以下配置项：
+     */
     for (dir <- liveLogDirs) {
       val logDirAbsolutePath = dir.getAbsolutePath
       try {
@@ -1068,6 +1082,9 @@ class LogManager(logDirs: Seq[File],
 
 object LogManager {
 
+  /**
+   * Kafka中的recovery-point-offset-checkpoint文件用于记录消费者组与Kafka主题之间的偏移量。如果消费者组在读取Kafka主题时发生故障，它可以使用此文件来恢复之前读取的偏移量，从而避免重复读取或丢失数据。该文件通常保存在Kafka broker节点的本地磁盘上，并且由Kafka consumer coordinator负责定期更新和维护。在每次更新后，Kafka会将偏移量信息持久化到本地磁盘上，以便在发生故障时进行恢复。因此，recovery-point-offset-checkpoint文件对于确保Kafka数据的高可用性和可靠性非常重要。它使得消费者组能够在故障发生后快速恢复，并从上一次读取的偏移量继续读取数据。
+   */
   val RecoveryPointCheckpointFile = "recovery-point-offset-checkpoint"
   val LogStartOffsetCheckpointFile = "log-start-offset-checkpoint"
   val ProducerIdExpirationCheckIntervalMs = 10 * 60 * 1000

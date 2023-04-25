@@ -51,7 +51,11 @@ trait OffsetCheckpoint {
 
 /**
   * This class persists a map of (Partition => Offsets) to a file (for a certain replica)
-  */
+ *  文件格式统一都是
+ *  第一行：版本号，当前是0
+ *  第二行：当前写入的Topic+Partition的记录个数
+ *  其他每行: topic 空格 partition 空格 offset
+ * */
 class OffsetCheckpointFile(val file: File, logDirFailureChannel: LogDirFailureChannel = null) {
   val checkpoint = new CheckpointFile[(TopicPartition, Long)](file, OffsetCheckpointFile.CurrentVersion,
     OffsetCheckpointFile.Formatter, logDirFailureChannel, file.getParent)
