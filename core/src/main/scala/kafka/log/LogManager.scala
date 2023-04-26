@@ -123,6 +123,7 @@ class LogManager(logDirs: Seq[File],
     logDirsSet
   }
 
+  //日志加载与恢复
   loadLogs()
 
   private[kafka] val cleaner: LogCleaner =
@@ -260,7 +261,7 @@ class LogManager(logDirs: Seq[File],
   // Only for testing
   private[log] def hasLogsToBeDeleted: Boolean = !logsToBeDeleted.isEmpty
 
-  private def loadLog(logDir: File,
+  private def loadLog(logDir: File, ///alidata3/kafka/kafka-logs/__consumer_offsets-39
                       recoveryPoints: Map[TopicPartition, Long],
                       logStartOffsets: Map[TopicPartition, Long]): Log = {
     val topicPartition = Log.parseTopicPartitionName(logDir)
@@ -269,7 +270,7 @@ class LogManager(logDirs: Seq[File],
     val logStartOffset = logStartOffsets.getOrElse(topicPartition, 0L)
 
     val log = Log(
-      dir = logDir,
+      dir = logDir,//alidata3/kafka/kafka-logs/__consumer_offsets-39
       config = config,
       logStartOffset = logStartOffset,
       recoveryPoint = logRecoveryPoint,
@@ -330,6 +331,7 @@ class LogManager(logDirs: Seq[File],
 
         val cleanShutdownFile = new File(dir, Log.CleanShutdownFile)
         if (cleanShutdownFile.exists) {
+          //INFO Skipping recovery for all logs in /alidata1/kafka/kafka-logs since clean shutdown file was found
           info(s"Skipping recovery for all logs in $logDirAbsolutePath since clean shutdown file was found")
         } else {
           // log recovery itself is being performed by `Log` class during initialization
@@ -368,7 +370,7 @@ class LogManager(logDirs: Seq[File],
               val log = loadLog(logDir, recoveryPoints, logStartOffsets)
               val logLoadDurationMs = time.hiResClockMs() - logLoadStartMs
               val currentNumLoaded = numLogsLoaded.incrementAndGet()
-
+              //INFO Completed load of Log(dir=/alidata3/kafka/kafka-logs/__consumer_offsets-39, topic=__consumer_offsets, partition=39, highWatermark=0, lastStableOffset=0, logStartOffset=0, logEndOffset=0) with 1 segments in 4ms (13/13 loaded in /alidata3/kafka/kafka-logs) (kafka.log.LogManager)
               info(s"Completed load of $log with ${log.numberOfSegments} segments in ${logLoadDurationMs}ms " +
                 s"($currentNumLoaded/${logsToLoad.length} loaded in $logDirAbsolutePath)")
             } catch {
@@ -419,34 +421,41 @@ class LogManager(logDirs: Seq[File],
    */
   def startup(): Unit = {
     /* Schedule the cleanup task to delete old logs */
+    //各个定时任务启动
     if (scheduler != null) {
+      //根据保留时间和保留大小进行历史 segment 的清理
       info("Starting log cleanup with a period of %d ms.".format(retentionCheckMs))
       scheduler.schedule("kafka-log-retention",
                          cleanupLogs _,
                          delay = InitialTaskDelayMs,
                          period = retentionCheckMs,
                          TimeUnit.MILLISECONDS)
+      //定时刷新还没有写到磁盘上日志
       info("Starting log flusher with a default period of %d ms.".format(flushCheckMs))
       scheduler.schedule("kafka-log-flusher",
                          flushDirtyLogs _,
                          delay = InitialTaskDelayMs,
                          period = flushCheckMs,
                          TimeUnit.MILLISECONDS)
+      //定时将所有数据目录所有日志的检查点写到检查点文件中
       scheduler.schedule("kafka-recovery-point-checkpoint",
                          checkpointLogRecoveryOffsets _,
                          delay = InitialTaskDelayMs,
                          period = flushRecoveryOffsetCheckpointMs,
                          TimeUnit.MILLISECONDS)
+      //将所有日志的当前日志开始偏移量写到日志目录中的文本文件中，以避免暴露已被 DeleteRecordsRequest 删除的数据。e. deleteLogs：定时删除标记为 delete 的日志文件
       scheduler.schedule("kafka-log-start-offset-checkpoint",
                          checkpointLogStartOffsets _,
                          delay = InitialTaskDelayMs,
                          period = flushStartOffsetCheckpointMs,
                          TimeUnit.MILLISECONDS)
+      //定时删除标记为 delete 的日志文件
       scheduler.schedule("kafka-delete-logs", // will be rescheduled after each delete logs with a dynamic period
                          deleteLogs _,
                          delay = InitialTaskDelayMs,
                          unit = TimeUnit.MILLISECONDS)
     }
+    //负责进行日志 compaction
     if (cleanerConfig.enableCleaner)
       cleaner.startup()
   }
@@ -982,6 +991,10 @@ class LogManager(logDirs: Seq[File],
   /**
    * Delete any eligible logs. Return the number of segments deleted.
    * Only consider logs that are not compacted.
+   * kafka cleanupLogs 方法的作用是清理过期的日志文件。当kafka中的主题的分区日志文件大小达到一定阈值，
+   * 或者日志文件的保留时间超过了设定的时间，就需要执行cleanupLogs方法进行清理。
+   * 清理的过程中，会删除掉已经过期的日志文件，从而释放磁盘空间。
+   * 同时，该方法还会更新kafka中的元数据，以便kafka能够正确地管理和读取主题中的日志数据
    */
   def cleanupLogs(): Unit = {
     debug("Beginning log cleanup...")
@@ -1086,6 +1099,10 @@ object LogManager {
    * Kafka中的recovery-point-offset-checkpoint文件用于记录消费者组与Kafka主题之间的偏移量。如果消费者组在读取Kafka主题时发生故障，它可以使用此文件来恢复之前读取的偏移量，从而避免重复读取或丢失数据。该文件通常保存在Kafka broker节点的本地磁盘上，并且由Kafka consumer coordinator负责定期更新和维护。在每次更新后，Kafka会将偏移量信息持久化到本地磁盘上，以便在发生故障时进行恢复。因此，recovery-point-offset-checkpoint文件对于确保Kafka数据的高可用性和可靠性非常重要。它使得消费者组能够在故障发生后快速恢复，并从上一次读取的偏移量继续读取数据。
    */
   val RecoveryPointCheckpointFile = "recovery-point-offset-checkpoint"
+  /**
+   * LogStartOffsetCheckpointFile是Apache Kafka中的一个文件，它存储了给定主题的分区中写入的第一条消息的偏移量位置。该文件用于跟踪最后提交的偏移量，以防止发生故障时数据丢失。
+   * LogStartOffsetCheckpointFile由Kafka代理创建和更新，并存储在与分区数据文件相同的目录中。当创建一个新的消费者组时，它将使用LogStartOffsetCheckpointFile确定从分区读取消息的起始位置。
+   */
   val LogStartOffsetCheckpointFile = "log-start-offset-checkpoint"
   val ProducerIdExpirationCheckIntervalMs = 10 * 60 * 1000
 

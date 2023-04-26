@@ -476,6 +476,11 @@ object ProducerStateManager {
  * age. This ensures that producer ids will not be expired until either the max expiration time has been reached,
  * or if the topic also is configured for deletion, the segment containing the last written offset has
  * been deleted.
+ * kafka ProducerStateManager 是 Kafka 生产者端的一个状态管理器，主要负责管理并维护生产者端的元数据信息，包括生产者记录的消息的偏移量、事务状态、元数据等信息。它的作用主要包括：
+ * 管理 ProducerState：生产者将消息发送到 Kafka 集群时，需要维护自己的状态信息，如已经发送的消息的偏移量、事务状态等。ProducerStateManager 会持久化记录这些状态信息，并在发生意外情况（如断电、宕机等）时恢复这些状态信息。
+ * 事务管理：在生产者端开启事务时，ProducerStateManager 会为该事务分配一个唯一的事务 ID，同时记录该事务的状态信息，包括事务的开始时间、结束时间、参与者以及事务提交状态等。
+ * 元数据管理：生产者端需要维护一些与 Kafka 集群相关的元数据信息，如 Kafka 集群的 Broker 信息、Topic 的 Partition 信息等。ProducerStateManager 会持久化记录这些元数据信息，并在需要时提供给生产者使用。
+ * 通过 ProducerStateManager 的状态管理，生产者可以更加可靠地发送消息，并保证消息的一致性与可靠性。
  */
 @nonthreadsafe
 class ProducerStateManager(val topicPartition: TopicPartition,

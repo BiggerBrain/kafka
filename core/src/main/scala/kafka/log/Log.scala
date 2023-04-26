@@ -198,7 +198,15 @@ case object SegmentDeletion extends LogStartOffsetIncrementReason {
  *
  * New log segments are created according to a configurable policy that controls the size in bytes or time interval
  * for a given segment.
- *
+ * Kafka Log 对象是 Kafka 消息存储的核心组件，主要用于实现持久化的消息存储和高效的消息读取。
+ * Kafka 采用了一种高效的消息存储方式，即通过分段的方式将消息存储在磁盘上，每个分段对应一个 Kafka Log 对象。
+ * Kafka Log 对象包含了该分段存储的消息集合，以及一些元数据信息，例如该分段的起始偏移量、最后一个消息的偏移量等。
+ * 每个消息在 Kafka Log 中都是按照顺序写入的，并且每个消息都有一个唯一的偏移量来标识它在 Kafka Log 中的位置。
+ * Kafka Log 对象的主要作用包括：持久化存储消息：Kafka Log 对象将消息以追加的方式写入磁盘，保证消息的持久化存储。
+ * Kafka Log 的存储方式是基于时间和大小的滚动策略，可以根据配置的参数来控制分段的大小和保留时间。
+ * 支持消息读取：Kafka Log 对象支持高效的消息读取和检索，可以根据偏移量和时间戳等条件来检索消息，同时支持批量读取和压缩编码等功能，提高消息读取的效率。
+ * 支持分布式部署：Kafka Log 对象可以分布在不同的 Broker 节点上，通过 Kafka 集群的协调机制保证数据的一致性和可靠性。
+ * 总之，Kafka Log 对象是 Kafka 的消息存储和读取的核心组件，它支持高效的消息存储和检索，并且可以分布部署实现高可用性和可扩展性。
  * @param _dir The directory in which log segments are created.
  * @param config The log configuration settings
  * @param logStartOffset The earliest offset allowed to be exposed to kafka client.
@@ -273,8 +281,14 @@ class Log(@volatile private var _dir: File,
   @volatile private var highWatermarkMetadata: LogOffsetMetadata = LogOffsetMetadata(logStartOffset)
 
   /* the actual segments of the log */
+  /**
+   * 保存了分区日志下所有的日志段信息
+   */
   private val segments: ConcurrentNavigableMap[java.lang.Long, LogSegment] = new ConcurrentSkipListMap[java.lang.Long, LogSegment]
 
+  /**
+   * 存了分区 Leader 的 Epoch 值与对应位移值的映射关系
+   */
   // Visible for testing
   @volatile var leaderEpochCache: Option[LeaderEpochFileCache] = None
 
@@ -282,11 +296,25 @@ class Log(@volatile private var _dir: File,
     // create the log directory if it doesn't exist
     Files.createDirectories(dir.toPath)
 
+    /**
+     * kafka initializeLeaderEpochCache 方法的作用是初始化副本集的 leader epoch 缓存。具体来说，它会在每个副本的副本状态机（ReplicaStateMachine）中创建一个 leader epoch 缓存，用于存储每个 partition 的 leader epoch 信息。这些信息包括 leader epoch 的值和最后一次更新该值的时间戳。
+     * 该方法在 kafka 2.0.0 版本中引入，旨在解决 leader epoch 的一些问题。leader epoch 是指 partition 的 leader 在一定时间内的版本号，用于防止过期的 follower 向 leader 发送请求。
+     * 在 kafka 0.11.0 版本之前，leader epoch 的值是在 partition leader 转移时自动更新的，但这种方式存在一些问题，如 leader 转移后有可能导致 follower 端出现错误的 leader epoch，从而导致请求失败。
+     * 因此，kafka 0.11.0 版本引入了明确的 leader epoch 概念，并且在 kafka 2.0.0 版本中进一步优化了相关功能。
+     * initializeLeaderEpochCache 方法就是其中的一个改进措施，它能够更好地管理和刷新 leader epoch 缓存，提高了 kafka 的可靠性和稳定性。
+     */
     initializeLeaderEpochCache()
 
     val nextOffset = loadSegments()
 
     /* Calculate the offset of the next message */
+    /**
+     * Kafka中的nextOffsetMetadata是一个元数据，包含LEO,表示下一个消息的偏移量和相关的元数据，用于追踪Kafka中每个分区的偏移量。
+     * 具体而言，nextOffsetMetadata记录了下一个消息的偏移量以及相关的元数据，包括消息的时间戳、生产者ID、事务ID等。
+     * 由于Kafka中的消息是按照偏移量顺序存储的，因此nextOffsetMetadata可以帮助消费者在消费消息时准确地定位到下一个待消费的消息。另外，nextOffsetMetadata还可以用于实现事务性消息和幂等性生产者。在事务性消息中，
+     * nextOffsetMetadata可以记录事务ID和事务状态等信息，帮助Kafka实现事务性消息的正确提交和回滚。在幂等性生产者中，nextOffsetMetadata可以记录生产者ID和序列号等信息，确保生产者发送的消息具有唯一性和顺序性。
+     * 总之，nextOffsetMetadata在Kafka中扮演着重要的角色，用于追踪消息的偏移量和相关的元数据，帮助消费者准确地定位到待消费的消息，并支持事务性消息和幂等性生产者等高级特性。
+     */
     nextOffsetMetadata = LogOffsetMetadata(nextOffset, activeSegment.baseOffset, activeSegment.size)
 
     leaderEpochCache.foreach(_.truncateFromEnd(nextOffsetMetadata.messageOffset))
@@ -699,17 +727,30 @@ class Log(@volatile private var _dir: File,
   private def loadSegments(): Long = {
     // first do a pass through the files in the log directory and remove any temporary files
     // and find any interrupted swap operations
+    /**
+     * 删除已经过期的临时文件：Kafka 在进行消息传输时，会将消息写入临时文件中，完成传输后会将这些临时文件删除。但是，如果 Kafka 进程异常退出或者崩溃，这些临时文件可能没有被删除，
+     * 这时候就需要通过 removeTempFilesAndCollectSwapFiles 函数来删除这些已经过期的临时文件。
+     * 收集交换文件：Kafka 在进行消息传输时，会使用交换文件（Swap File）来暂存数据。
+     * 这些交换文件占用了一定的磁盘空间，如果不进行清理，会导致磁盘空间不足。removeTempFilesAndCollectSwapFiles 函数会定期清理并收集这些交换文件，以释放磁盘空间。
+     * 总之，removeTempFilesAndCollectSwapFiles 函数是维护 Kafka 程序健康运行的重要一环，它能够保证 Kafka 的正常运行和稳定性。
+     * 移除上次 Failure 遗留下来的各种临时文件（包括.cleaned、.swap、.deleted 文件等）
+     */
     val swapFiles = removeTempFilesAndCollectSwapFiles()
 
     // Now do a second pass and load all the log and index files.
     // We might encounter legacy log segments with offset overflow (KAFKA-6264). We need to split such segments. When
     // this happens, restart loading segment files from scratch.
+    //现在进行第二轮操作，加载所有日志和索引文件。我们可能会遇到具有偏移量溢出的旧日志段 (KAFKA-6264)。这时，我们需要对这些日志段进行拆分。在发生这种情况时，需要重新从头开始加载段文件。
     retryOnOffsetOverflow {
       // In case we encounter a segment with offset overflow, the retry logic will split it after which we need to retry
       // loading of segments. In that case, we also need to close all segments that could have been left open in previous
       // call to loadSegmentFiles().
+      /**
+       * 清空所有日志段对象，并且再次遍历分区路径，重建日志段 segments Map 并删除无对应日志段文件的孤立索引文件。
+       */
       logSegments.foreach(_.close())
       segments.clear()
+      //从文件中装载日志段
       loadSegmentFiles()
     }
 
@@ -2483,7 +2524,7 @@ object Log {
 
   val UnknownOffset = -1L
 
-  def apply(dir: File,
+  def apply(dir: File,//alidata3/kafka/kafka-logs/__consumer_offsets-39
             config: LogConfig,
             logStartOffset: Long,
             recoveryPoint: Long,
