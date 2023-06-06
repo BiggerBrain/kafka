@@ -61,7 +61,7 @@ abstract class AbstractFetcherThread(name: String, //代码解析：线程名称
   type FetchData = FetchResponseData.PartitionData
   //代码解析：定义EpochData类型表示Leader Epoch数据
   type EpochData = OffsetForLeaderEpochRequestData.OffsetForLeaderPartition
-
+  //分区状态信息
   private val partitionStates = new PartitionStates[PartitionFetchState]
   protected val partitionMapLock = new ReentrantLock
   private val partitionMapCond = partitionMapLock.newCondition()

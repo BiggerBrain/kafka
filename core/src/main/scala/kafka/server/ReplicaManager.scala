@@ -1383,6 +1383,7 @@ class ReplicaManager(val config: KafkaConfig,
           controllerEpoch = leaderAndIsrRequest.controllerEpoch
 
           val partitions = new mutable.HashSet[Partition]()
+          //把分区分为要成为leader的集合
           val partitionsToBeLeader = new mutable.HashMap[Partition, LeaderAndIsrPartitionState]()
           val partitionsToBeFollower = new mutable.HashMap[Partition, LeaderAndIsrPartitionState]()
           val topicIdUpdateFollowerPartitions = new mutable.HashSet[Partition]()
@@ -1611,7 +1612,7 @@ class ReplicaManager(val config: KafkaConfig,
    * If an unexpected error is thrown in this function, it will be propagated to KafkaApis where
    * the error message will be set on each partition since we do not know which partition caused it. Otherwise,
    * return the set of partitions that are made leader due to this method
-   *
+   *  处理leader集合中的分区
    *  TODO: the above may need to be fixed later
    */
   private def makeLeaders(controllerId: Int,
@@ -1634,6 +1635,7 @@ class ReplicaManager(val config: KafkaConfig,
 
     try {
       // First stop fetchers for all the partitions
+      //停止这些分区的fetch现场
       replicaFetcherManager.removeFetcherForPartitions(partitionStates.keySet.map(_.topicPartition))
       stateChangeLogger.info(s"Stopped fetchers as part of LeaderAndIsr request correlationId $correlationId from " +
         s"controller $controllerId epoch $controllerEpoch as part of the become-leader transition for " +

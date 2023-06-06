@@ -146,6 +146,7 @@ object DelayedOperationPurgatory {
 
 /**
  * A helper purgatory class for bookkeeping delayed operations with a timeout, and expiring timed out operations.
+ * 一个帮助记账延迟操作的炼狱类，具备超时功能和过期超时操作的功能。
  */
 final class DelayedOperationPurgatory[T <: DelayedOperation](purgatoryName: String,
                                                              timeoutTimer: Timer,

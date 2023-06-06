@@ -259,6 +259,7 @@ class Partition(val topicPartition: TopicPartition,
   def partitionId: Int = topicPartition.partition
 
   private val stateChangeLogger = new StateChangeLogger(localBrokerId, inControllerContext = false, None)
+  //存储该分区所有Follower副本信息，不包含该节点
   private val remoteReplicasMap = new Pool[Int, Replica]
   // The read lock is only required when multiple reads are executed and needs to be in a consistent manner
   //代码解析:只读锁在执行多个读操作时需要，从而保障并发读情况下操作的一致性
@@ -268,11 +269,13 @@ class Partition(val topicPartition: TopicPartition,
   private val futureLogLock = new Object()
   // The current epoch for the partition for KRaft controllers. The current ZK version for the legacy controllers.
   @volatile private var partitionEpoch: Int = LeaderAndIsr.InitialPartitionEpoch
+  //分区的leader，与leader epoch机制非常相关
   @volatile private var leaderEpoch: Int = LeaderAndIsr.InitialLeaderEpoch - 1
   // start offset for 'leaderEpoch' above (leader epoch of the current leader for this partition),
   // defined when this broker is leader for partition
   @volatile private[cluster] var leaderEpochStartOffsetOpt: Option[Long] = None
   // Replica ID of the leader, defined when this broker is leader or follower for the partition.
+  // 该分区leader副本所在broker的Id
   @volatile var leaderReplicaIdOpt: Option[Int] = None
   @volatile private[cluster] var partitionState: PartitionState = CommittedPartitionState(Set.empty, LeaderRecoveryState.RECOVERED)
   @volatile var assignmentState: AssignmentState = SimpleAssignmentState(Seq.empty)
@@ -594,6 +597,7 @@ class Partition(val topicPartition: TopicPartition,
 
       // Updating the assignment and ISR state is safe if the partition epoch is
       // larger or equal to the current partition epoch.
+      //代码解析：更新分区信息
       updateAssignmentAndIsr(
         replicas = replicas,
         isLeader = true,
@@ -604,6 +608,7 @@ class Partition(val topicPartition: TopicPartition,
       )
 
       try {
+        //如果分区Log不存在则创建Log实例
         createLogIfNotExists(partitionState.isNew, isFutureReplica = false, highWatermarkCheckpoints, topicId)
       } catch {
         case e: ZooKeeperClientException =>
@@ -611,12 +616,12 @@ class Partition(val topicPartition: TopicPartition,
             s"state change for the partition $topicPartition with leader epoch: $leaderEpoch.", e)
           return false
       }
-
       val leaderLog = localLogOrException
 
       // We update the epoch start offset and the replicas' state only if the leader epoch
       // has changed.
       if (isNewLeaderEpoch) {
+        //代表该Broker成为分区新的Leader副本
         val leaderEpochStartOffset = leaderLog.logEndOffset
         stateChangeLogger.info(s"Leader $topicPartition with topic id $topicId starts at " +
           s"leader epoch ${partitionState.leaderEpoch} from offset $leaderEpochStartOffset " +
