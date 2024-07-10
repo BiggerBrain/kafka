@@ -965,6 +965,10 @@ project(':core') {
 
     compileOnly libs.reload4j
 
+    implementation group: 'org.slf4j', name: 'slf4j-log4j12', version: '2.0.13'
+    implementation group: 'org.slf4j', name: 'slf4j-api', version: '2.0.13'
+
+
     testImplementation project(':clients').sourceSets.test.output
     testImplementation project(':group-coordinator').sourceSets.test.output
     testImplementation project(':metadata').sourceSets.test.output
