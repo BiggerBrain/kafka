@@ -773,9 +773,9 @@ class UnifiedLog(@volatile var logStartOffset: Long,
     // We want to ensure the partition metadata file is written to the log dir before any log data is written to disk.
     // This will ensure that any log data can be recovered with the correct topic ID in the case of failure.
     maybeFlushMetadataFile()
-
+    //val validateAndAssignOffsets = origin != AppendOrigin.RAFT_LEADER
     val appendInfo = analyzeAndValidateRecords(records, origin, ignoreRecordSize, !validateAndAssignOffsets, leaderEpoch)
-
+    info(s"appendInfo:${appendInfo},validateAndAssignOffsets:${validateAndAssignOffsets},${localLog.logEndOffset}")
     // return if we have no valid messages or if this is a duplicate of the last appended entry
     if (appendInfo.validBytes <= 0) appendInfo
     else {
@@ -807,6 +807,8 @@ class UnifiedLog(@volatile var logStartOffset: Long,
                 origin,
                 interBrokerProtocolVersion
               )
+              info(s"config.compression:${config.compression} sourceCompression:${appendInfo.sourceCompression()}targetCompression:${targetCompression.`type`()}")
+              info(s"validator:${validator}")
               validator.validateMessagesAndAssignOffsets(offset,
                 validatorMetricsRecorder,
                 requestLocal.getOrElse(throw new IllegalArgumentException(
@@ -1125,7 +1127,10 @@ class UnifiedLog(@volatile var logStartOffset: Long,
     var readFirstMessage = false
     var lastOffsetOfFirstBatch = -1L
 
+    var i=0
     records.batches.forEach { batch =>
+      info(s"batch ${i} %=${batch.toString} requireOffsetsMonotonic:${requireOffsetsMonotonic}")
+      i+=1
       if (origin == AppendOrigin.RAFT_LEADER && batch.partitionLeaderEpoch != leaderEpoch) {
         throw new InvalidRecordException("Append from Raft leader did not set the batch epoch correctly")
       }
@@ -1191,6 +1196,7 @@ class UnifiedLog(@volatile var logStartOffset: Long,
       OptionalInt.of(lastLeaderEpoch)
     else
       OptionalInt.empty()
+
 
     new LogAppendInfo(firstOffset, lastOffset, lastLeaderEpochOpt, maxTimestamp, shallowOffsetOfMaxTimestamp,
       RecordBatch.NO_TIMESTAMP, logStartOffset, RecordValidationStats.EMPTY, sourceCompression,

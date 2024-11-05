@@ -216,7 +216,7 @@ public class KafkaProducerTest {
     public void testAcksAndIdempotenceForIdempotentProducers() {
         Properties baseProps = new Properties() {{
                 setProperty(
-                    ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9999");
+                    ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
                 setProperty(
                     ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
                 setProperty(
