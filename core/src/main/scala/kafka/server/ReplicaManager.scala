@@ -366,6 +366,7 @@ class ReplicaManager(val config: KafkaConfig,
   }
 
   def resizeFetcherThreadPool(newSize: Int): Unit = {
+    warn(s"resizeFetcherThreadPool $newSize")
     replicaFetcherManager.resizeThreadPool(newSize)
   }
 

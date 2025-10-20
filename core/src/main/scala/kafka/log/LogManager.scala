@@ -972,6 +972,7 @@ class LogManager(logDirs: Seq[File],
     // We would like to validate the configuration no matter whether the logs have materialised on disk or not.
     // Otherwise we risk someone creating a tiered-topic, disabling Tiered Storage cluster-wide and the check
     // failing since the logs for the topic are non-existent.
+    info(s"updateTopicConfig topic:${topic}")
     LogConfig.validateRemoteStorageOnlyIfSystemEnabled(newLogConfig.values(), isRemoteLogStorageSystemEnabled, true)
     if (logs.nonEmpty) {
       logs.foreach { log =>

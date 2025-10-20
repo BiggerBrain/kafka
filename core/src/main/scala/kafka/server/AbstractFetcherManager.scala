@@ -133,6 +133,7 @@ abstract class AbstractFetcherManager[T <: AbstractFetcherThread](val name: Stri
 
       def addAndStartFetcherThread(brokerAndFetcherId: BrokerAndFetcherId,
                                    brokerIdAndFetcherId: BrokerIdAndFetcherId): T = {
+        info(s"addAndStartFetcherThread $BrokerAndFetcherId,BrokerIdAndFetcherId:$BrokerIdAndFetcherId")
         val fetcherThread = createFetcherThread(brokerAndFetcherId.fetcherId, brokerAndFetcherId.broker)
         fetcherThreadMap.put(brokerIdAndFetcherId, fetcherThread)
         fetcherThread.start()
